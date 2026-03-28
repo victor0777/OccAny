@@ -140,6 +140,46 @@ rear(0.184), side(0.176), front(0.167) 모두 비슷. 유일하게 **observed_ac
 **영향**: Phase 3 fast track (sectorized features, reliability, VLM verifier) 착수 근거 확보. 단일 지표가 아닌 다중 지표 접근이 필수.
 
 
+## 2026-03-29: Phase 3 Dense Analysis 121건 — 다중 feature 결합 한계
+
+**맥락**: collision_time ± 5s dense windows (stride 1) + sectorized features 121건 분석 완료
+
+**발견**:
+
+### Feature별 통계적 유의성
+
+| Feature | ego_active mean | observed mean | p-value | 유의? |
+|---------|----------------|---------------|---------|-------|
+| rotation_shock (deg) | **21.7** | 9.4 | **0.033** | * |
+| sector_collapse | 0.110 | 0.082 | 0.089 | ns |
+| abs_asymmetry | 0.272 | 0.254 | 0.706 | ns |
+| approaching | 82% | 75% | 0.367 | ns |
+| reliability | 0.469 | 0.521 | 0.402 | ns |
+
+→ **rotation_shock만 유의미** (p<0.05). 나머지 sectorized features는 유의하지 않음.
+
+### 다중 feature 결합 효과
+
+| 방법 | Best F1 |
+|------|---------|
+| ego_signal 단독 (Phase 2) | 0.632 |
+| sector_collapse 단독 (Phase 3) | 0.634 |
+| rotation_shock 단독 (Phase 3) | **0.646** |
+| 3개 weighted 결합 | **0.646** |
+
+→ **결합해도 개선 없음.** rotation_shock가 이미 최선이고, 나머지를 더해도 노이즈만 추가.
+
+### 결론
+
+1. OccAny 단독 ego_active 분류: **F1≈0.65가 현실적 상한**
+2. **rotation_shock가 가장 유의미한 새 feature** — ego_signal과 독립적 정보 제공
+3. sector_collapse는 기대보다 변별력 낮음 — dense window에서도 분포 겹침 큼
+4. best_collapse_sector → impact_side 예측 실패 — 균일 분포
+5. **VP features와 결합 시 개선 가능** (독립적 r=0.045) — accident_analysis 프로젝트에서 진행
+
+**영향**: OccAny 프로젝트 자체에서의 feature 탐색은 여기서 수렴. 향후 개선은 (1) VP/VLM과의 cross-project 결합, (2) Gold GT 확보 후 ML 전환, (3) 차량 추적/차선 인식 추가에 의존.
+
+
 ## 2026-03-28: dgx01 추가 데이터 확보 + 사고 원인별 3D 패턴
 
 **맥락**: dgx01 accident_analysis에서 추가 라벨 파일 6종 확보 (cause_classification, risk_events, gt_alignment 등)

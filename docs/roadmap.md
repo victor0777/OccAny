@@ -13,14 +13,14 @@
 - [x] 10개 feature 식별 + 사고 원인 8종별 패턴 분석
 - [x] dgx01 데이터 통합 (cause_classification, risk_events, physics_sim, gt_alignment)
 
-## Phase 3: 3D Evidence Layer — Fast Track ← **current** (진행중)
+## Phase 3: 3D Evidence Layer — Fast Track ✅
 > ADR-001 (Claude vs Codex debate). OccAny = "3D geometric evidence layer"
 
 - [x] Phase 3 dense analysis 스크립트 구축 (phase3_dense_analysis.py)
-- [ ] 121건 dense window 분석 완료 대기
-- [ ] Sectorized features 통계 분석 + ego_signal 대비 개선 확인
-- [ ] VLM claim verifier v1: rule-based, 4 claim types — 2-3d
-- [ ] Evaluate on 157 labeled + failure taxonomy — 1-2d
+- [x] 121건 dense window 분석 완료 (에러 0)
+- [x] Sectorized features 통계 분석 완료
+- [x] **결론: rotation_shock만 유의 (p=0.033), 다중 결합해도 F1≈0.65 한계**
+- [ ] VLM claim verifier v1 → accident_analysis 프로젝트에서 VP와 결합하여 진행
 
 ## Phase 4: Gold GT Sprint
 > ADR-002. GT schema v2: per-collision, dual contact zone, lane info
