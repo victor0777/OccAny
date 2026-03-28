@@ -41,7 +41,7 @@
 ## GT Schema (per-video)
 
 ```yaml
-schema: accident_gt/v1
+schema: accident_gt/v2
 stem: "20181009_SEQ_S_F_D_1_O_1_0"
 reviewer: "ktl"
 review_date: "2026-03-28"
@@ -52,6 +52,13 @@ observability: "clear"       # clear / partial / poor
 confidence: "high"           # high / medium / low
 n_collisions: 2              # 충돌 횟수
 
+# === 도로/차선 정보 ===
+lane_info:
+  available: true             # 차선 식별 가능 여부
+  road_type: "highway"        # highway / urban / intersection / parking / rural / unclear
+  n_lanes_visible: 3          # 보이는 차선 수 (0 = 차선 없음)
+  ego_lane_at_start: 2        # 사고 전 ego 차선 (왼쪽부터 1, null = 불명)
+
 # === 충돌 목록 (per-collision) ===
 collisions:
   - collision_id: 1
@@ -61,26 +68,42 @@ collisions:
     vehicle_a: "ego"                  # ego / car1 / car2 / truck1 / bus1 / ...
     vehicle_a_type: "car"             # car / truck / bus / motorcycle / bicycle / pedestrian / structure / unknown
     contact_zone_a: "front_center"    # 8-zone
+    lane_a: 2                         # 충돌 시 차선 (null = 불명)
+    lane_change_a: false              # 차선 변경 중이었는가
 
     # 충돌 당사자 B
     vehicle_b: "car1"
     vehicle_b_type: "car"
     contact_zone_b: "rear_center"     # 8-zone
+    lane_b: 2                         # 충돌 시 차선 (null = 불명)
+    lane_change_b: false
 
     # 충돌 특성
     collision_type: "rear_end"        # rear_end / side_swipe / head_on / t_bone / single_vehicle / unclear
     severity_visible: "moderate"      # minor (스크래치) / moderate (변형) / severe (대파/전복) / unclear
+
+    # 사고 전 상황 (충돌 직전 ~2초)
+    pre_collision:
+      ego_action: "approaching"       # approaching / lane_changing / braking / stationary / evading / unclear
+      vehicle_b_behavior: "stationary" # stationary / decelerating / lane_changing / approaching_from_side / approaching_from_rear / unclear
 
   - collision_id: 2
     time_sec: 3.8
     vehicle_a: "ego"
     vehicle_a_type: "car"
     contact_zone_a: "front_left"
+    lane_a: 1                         # 차선 이탈 후 1차선
+    lane_change_a: true               # 충돌로 인해 차선 이탈
     vehicle_b: "guardrail"
     vehicle_b_type: "structure"
     contact_zone_b: "unclear"
+    lane_b: null
+    lane_change_b: false
     collision_type: "single_vehicle"
     severity_visible: "moderate"
+    pre_collision:
+      ego_action: "evading"
+      vehicle_b_behavior: "stationary"
 
 # === 사고 원인 (영상 수준) ===
 cause: "rear_end_ego_at_fault"        # 8종
@@ -153,6 +176,67 @@ notes: ""                             # 특이사항
 | 불명확 (poor observability) | 6 + unclear 다수 | 2분 (빠르게 unclear 처리) |
 
 80건 목표 × 평균 3분 = **~4시간** 소요
+
+---
+
+## 사고 원인 분석 Gap 분석
+
+### 원인별 필요 정보 vs 현재 가용성
+
+| 사고 원인 (건수) | 핵심 필요 정보 | OccAny | VP | Gap |
+|-----------------|--------------|--------|-----|-----|
+| rear_end (56) | 전방 거리 변화, 접근 속도 | depth ✅ | close_approach ✅ | — |
+| unsafe_lane_change (14) | **차선 위치, 차선 변경** | ✗ | lane_change △ | **차선 인식** |
+| cut_in_other (11) | **상대 차량 추적, 차선 침입** | ✗ | cut_in △ | **차량 추적** |
+| solo_collision (6) | ego 궤적, 도로 이탈 | rotation ✅ | — | **차선 대비 위치** |
+| sudden_stop (5) | 전방 감속 감지 | depth ✅ | sudden_decel ✅ | — |
+| intersection (3) | 교차로 인식, 측면 접근 | sector ✅ | — | **교차로 인식** |
+| observed (58) | **타 차량 추적**, ego 미개입 | ego_signal ✅ | — | **차량 추적** |
+
+### 부족한 3가지 핵심 기능
+
+**1. 차선 인식 (Lane Detection)**
+
+현재 VP가 차선 감지율 80%이지만 "몇 차선인지, ego가 어디 있는지"는 제공하지 않음.
+필요 원인: unsafe_lane_change(14건), cut_in(11건), solo_collision(6건) = **31건 (20%)**
+
+가능한 접근:
+- VP EgoLanes 출력에서 차선 수 추정 (lane_width_mean=54.6px)
+- OccAny 시맨틱에서 road 영역 내 차선 감지 (SAM2 road class → 차선 마크)
+- CLRerNet (perception 프로젝트) — RTB에서는 사용 중이나 사고 영상에는 미적용
+
+**2. 차량 추적 (Vehicle Tracking)**
+
+현재 OccAny는 프레임별 vehicle 클래스만, 개별 차량 ID 없음.
+필요 원인: cut_in(11건), observed(58건) = **69건 (44%)**
+
+가능한 접근:
+- OccAny SAM2 instance mask 저장 (Phase 4 계획) → 5프레임 내 pseudo-tracking
+- YOLO+BYTETrack을 사고 영상에 실행 (별도 파이프라인)
+- 3D 포인트 클러스터링으로 anonymous tracking (ADR-001 Phase 4)
+
+**3. 차선 대비 차량 위치 (Lane-relative Position)**
+
+1+2의 결합: "car1이 2차선 → 1차선 이동 후 ego와 충돌"
+이것이 있어야 과실 방향을 판단할 수 있음.
+
+### GT에서 차선/추적 정보의 위치
+
+```
+GT schema v2 추가 필드:
+├── lane_info (영상 수준)
+│   ├── available: 차선 식별 가능 여부
+│   ├── road_type: 도로 유형
+│   ├── n_lanes_visible: 보이는 차선 수
+│   └── ego_lane_at_start: 사고 전 ego 차선
+│
+└── collisions[] (충돌 수준)
+    ├── lane_a / lane_b: 충돌 시 각 차량의 차선
+    ├── lane_change_a / lane_change_b: 차선 변경 중이었는가
+    └── pre_collision:
+        ├── ego_action: 사고 직전 ego 행동
+        └── vehicle_b_behavior: 상대 차량 행동
+```
 
 ---
 
