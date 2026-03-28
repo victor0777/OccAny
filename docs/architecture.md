@@ -210,6 +210,72 @@ collision_type_hint:
 
 ---
 
+## Semantic Segmentation 정보
+
+### 클래스 체계 (nuScenes 17+1 classes)
+
+| ID | Class | Category |
+|----|-------|----------|
+| 0 | unknown | unknown |
+| 1 | fence | structure |
+| 2 | bicycle | VRU |
+| 3-5, 9 | other-vehicle | vehicle |
+| 4 | car | vehicle |
+| 6 | motorcycle | vehicle |
+| 7 | person | VRU |
+| 8 | traffic-sign | structure |
+| 10 | truck | vehicle |
+| 11 | road | road_surface |
+| 12 | other-ground | road_surface |
+| 13 | sidewalk | road_surface |
+| 14 | terrain | nature |
+| 15 | building | structure |
+| 16 | vegetation | nature |
+| 17 | empty | empty |
+
+### 사고 원인별 시맨틱 구성
+
+| 원인 | vehicle | road | nature | empty | flip rate |
+|------|---------|------|--------|-------|-----------|
+| rear_end_ego_at_fault | 24.6% | 27.3% | 9.0% | 36.6% | 19.4% |
+| unsafe_lane_change_ego | 23.6% | 31.0% | 6.5% | 36.5% | **28.2%** |
+| solo_collision | 31.9% | 23.0% | 7.5% | 35.6% | **32.9%** |
+| observed_accident | 25.6% | 24.3% | 10.4% | 37.6% | 17.9% |
+| rear_end_other_at_fault | **43.8%** | 16.7% | 3.2% | 36.1% | **10.5%** |
+| side_collision_intersection | 12.3% | **33.2%** | 9.6% | **44.8%** | 19.7% |
+
+### 시맨틱 패턴 발견
+
+1. **rear_end_other_at_fault**: vehicle 비율 최고(43.8%), flip rate 최저(10.5%)
+   - 해석: 전방 차량이 가까이 있고 안정적 → 정지 중 뒤에서 추돌당한 상황
+2. **solo_collision / unsafe_lane_change**: flip rate 최고(28-33%)
+   - 해석: 카메라가 급격히 움직이면서 시맨틱 불안정 → 능동적 사고의 시그널
+3. **side_collision_intersection**: vehicle 비율 최저(12.3%), empty 최고(44.8%)
+   - 해석: 교차로에서 열린 공간이 많고 차량은 측면에서 접근
+4. **observed_accident vs ego**: vehicle 비율 비슷(25-26%), flip rate로 구분 가능(18% vs 19-33%)
+
+### Semantic Flip Rate — 시맨틱 불안정도
+
+- **전체 평균 20.3%**: 프레임간 non-empty 픽셀의 20%가 클래스 변경
+- 이는 SAM2의 프레임별 독립 추론 때문 (video mode에서도 발생)
+- **flip rate 자체가 사고 특성을 반영하는 feature**:
+  - 높은 flip rate = 카메라 급변/충격 = ego 능동 사고 경향
+  - 낮은 flip rate = 안정적 시야 = 피동/관찰 사고 경향
+- 픽셀 단위 시맨틱 추적은 불가 → **카테고리별 비율과 flip rate만 feature로 활용**
+
+### 활용 가능한 시맨틱 Feature
+
+| Feature | 설명 | 사고 분석 활용 |
+|---------|------|--------------|
+| `vehicle_ratio` | 차량 클래스 비율 | 높으면 근접 차량 존재 (추돌 시그널) |
+| `road_ratio` | 도로면 비율 | 높으면 개활지 (교차로/고속도로) |
+| `empty_ratio` | 빈 공간 비율 | 높으면 3D 복원 실패 or 하늘 |
+| `flip_rate` | 프레임간 클래스 변경률 | **능동 사고 시그널** (ego_signal 보완) |
+| `vehicle_ratio_change` | 시간에 따른 vehicle 비율 변화 | 접근/이탈 감지 |
+| `VRU_present` | 보행자/자전거 존재 여부 | VRU 관련 사고 감지 |
+
+---
+
 ## OccAny의 능력 범위
 
 ### 신뢰할 수 있는 것 (scale-free 상대 특징)
