@@ -194,19 +194,105 @@ collision_type_hint:
 | Phase 2 (non_accident, daytime) | 26 | 대조군 signal=0.151 |
 | Phase 3 (dense windows, 진행중) | 121 | sectorized features |
 
-### 라벨 파일 (accident_analysis project)
+### 라벨 파일 전체 인벤토리 (accident_analysis project)
+
+#### 핵심 라벨 (분류/원인)
+
+| 파일 | 건수 | 내용 | 생성 |
+|------|------|------|------|
+| `review_results.json` | 1,099 | 사고/비사고/unknown/inadequate 분류 | VLM 자동 |
+| `collision_analysis_results.json` | 157 | ego/observed, impact zone, description | VLM+휴리스틱 |
+| `cause_classification_results.json` | 157 | 사고 원인 8가지, evidence, contributing_factors | VLM 자동 |
+| `collision_types.json` | 125 | 충돌 유형 (rear/side/front/unclear) | VLM 자동 |
+
+#### Perception 기반 검증
+
+| 파일 | 건수 | 내용 | 생성 |
+|------|------|------|------|
+| `mask_contact_eval_results.json` | 157 | **mask_zone** (Mask2Former 기반 충돌 zone), mask_vehicle, mask_impact_time | Panoptic 자동 |
+| `risk_event_results.json` | 158 | VP 프레임별 위험 이벤트 (close_approach, depth_drop) | VP 자동 |
+| `physics_sim_results.json` | 100 | **속도 추정** (ego/other/impact speed, TTC range), scenario template | 시뮬레이션 |
+| `feature_kpi_results.json` | — | VP 정량 KPI (depth, lane, risk score) | VP 자동 |
+
+#### 수동 검증 (Gold GT 후보)
 
 | 파일 | 건수 | 내용 |
 |------|------|------|
-| `review_results.json` | 1,099 | 사고/비사고 분류 |
-| `collision_analysis_results.json` | 157 | ego/observed, 충돌 상세 |
-| `cause_classification_results.json` | 157 | 사고 원인 8가지 |
-| `collision_types.json` | 125 | 충돌 유형 (rear/side/front) |
-| `risk_event_results.json` | 158 | VP 위험 이벤트 시계열 |
-| `gt_alignment_results.json` | 15 | 수동 검증 GT (Gold 후보) |
-| `vlm_accident_results.json` | 188 | VLM 사고 판정 |
+| `gt_alignment_results.json` | 15 | 수동 GT + VP/panoptic 교차 검증 (collision_type, reasons, zone match) |
+| `expert_review_20.json` | 20 | 전문가 리뷰 대상 영상 목록 |
+| `gt_review_checklist.json` | 18 | GT 재검수 대상 (ADR-011) |
+
+#### VLM 평가
+
+| 파일 | 건수 | 내용 |
+|------|------|------|
+| `vlm_accident_results.json` | 188 | VLM 사고 판정 + confidence |
 | `vlm_assessment_results.json` | 138 | VLM 종합 평가 |
-| `feature_kpi_results.json` | — | VP 정량 KPI |
+| `vlm_rerank_results.json` | 60 | VLM 재순위 평가 |
+| `collision_type_vlm_eval.json` | 112 | 충돌 유형 GT vs VLM 비교 |
+| `report_evals.json` | 85 | 보고서 품질 평가 |
+
+#### 주요 발견: mask_contact_eval
+
+**mask_zone**(Mask2Former 기반)은 VLM zone과 **16%만 일치**:
+
+| mask_zone (Panoptic) | 건수 | vlm_zone과 비교 |
+|---------------------|------|----------------|
+| front_center | 55 | VLM은 front_center를 28건만 |
+| front_left | 31 | |
+| front_right | 28 | |
+| left_side | 13 | |
+| right_side | 13 | |
+| None (미감지) | 17 | |
+
+→ VLM과 Panoptic의 zone 판정이 크게 다름. **OccAny의 sector_collapse가 제3의 독립적 zone 판정** 역할 가능.
+
+#### 주요 발견: physics_sim_results
+
+100건에 대해 **물리 시뮬레이션 기반 속도/TTC 추정**:
+- ego_speed_range_kmh: [32-78] km/h
+- impact_speed_range_kmh: [0-98] km/h
+- ttc_range_sec: [0.8-3.5] s
+
+→ OccAny의 상대적 접근 속도와 교차 검증 가능 (절대값은 불가하지만 순서/비율 비교).
+
+### GT 4단계 상세도
+
+| Level | 파일 | 건수 | 필드 | 신뢰도 |
+|-------|------|------|------|--------|
+| **L1** | review_results | 1,099 | label만 | VLM 자동 (낮음) |
+| **L2** | collision_analysis | 157 | + time, subject, impacts, description | VLM+휴리스틱 (중간) |
+| **L3** | cause + mask_contact + physics_sim | 157/100 | + cause, zone, speed, TTC | 자동+시뮬 (중간) |
+| **L4** | gt_alignment | **15** | + 수동 GT + 교차 검증 | **사람 검증 (높음)** |
+
+### Gold GT 필요 필드 (ML용)
+
+```yaml
+stem: "20181009_SEQ_S_F_D_1_O_1_0"
+reviewer: "human"
+confidence: "high"        # high / medium / low
+observability: "clear"    # clear / partial / poor
+
+# 필수 (OccAny 10 feature 검증 대상)
+accident_subject: "ego"   # ego / observed
+collision_time: 3.05      # seconds
+impact_side: "front"      # front / left / right / rear / unclear
+cause: "rear_end_ego_at_fault"  # 8종 중 1
+
+# 선택 (추가 검증용)
+counterpart_type: "car"           # car / truck / VRU / structure / unknown
+counterpart_sector: "front_center"  # last visible position
+camera_shake_visible: true
+post_impact_blocked: false
+```
+
+### Gold GT 구축 전략
+
+1. **기존 L4 (15건) + expert_review (20건) + gt_checklist (18건)** = 시작점 ~35건
+2. **추가 45건 선정**: VLM/mask/OccAny 불일치 건 우선
+3. **2-stage review**: blind → assisted (Phase 3 evidence 활용)
+4. **목표**: 80건 Gold, 카테고리당 최소 10건
+5. **ML 학습**: Gold 80 + Silver(L2/L3) ~150 = 230건으로 간단한 모델 학습
 
 ---
 
