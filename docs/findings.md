@@ -61,6 +61,42 @@
 **영향**: ego/observed 불확실 45건에 대한 3D 기반 재판정 파이프라인 구축 가능. 기존 VLM 2D 판정에 3D 물리 증거를 보강하는 역할. threshold=0.08에서 Precision 81%, F1=0.773 달성.
 
 
+## 2026-03-28: ego_signal_strength의 한계 — 사고/비사고 분류 불가
+
+**맥락**: non_accident 26건 (GT 확정)을 대조군으로 OccAny 추론하여 ego_signal_strength 비교
+
+**발견**:
+
+### 3-way 비교 (ego=36, observed=25, non_accident=26)
+
+| 그룹 | mean | median | std |
+|------|------|--------|-----|
+| ego accident | **0.212** | 0.173 | 0.170 |
+| non_accident | 0.151 | 0.140 | 0.118 |
+| observed | 0.101 | 0.062 | 0.103 |
+
+- ego vs observed: t=3.12, **p=0.003 (유의)**
+- ego vs non_accident: t=1.64, **p=0.105 (유의하지 않음)**
+- non_accident 26건 중 12건(46%)이 signal > 0.15
+
+### 원인
+
+ego_signal_strength는 **"카메라 충격/흔들림"을 감지**하는 것이지 "사고"를 감지하는 것이 아님.
+non_accident에서도 급정거, 과속방지턱, 비포장 도로, 급차선 변경 등으로 3D 복원 품질 급락이 빈번.
+
+### 결론
+
+| 용도 | ego_signal 유효? |
+|------|----------------|
+| 사고 내 ego vs observed 구분 | **유효** (p=0.003) |
+| accident vs non_accident 분류 | **불충분** (p=0.105) |
+
+→ ego_signal은 **"사고가 확인된 건"에서 ego/observed 판별**에만 사용.
+→ 사고/비사고 분류에는 추가 특징 필요 (시맨틱 변화, 장면 구조 파괴, 파편 감지 등)
+
+**영향**: Phase 3에서 ego_signal을 사고 감지가 아닌 **사고 내 역할 분류**에 한정해서 사용. 사고/비사고 스크리닝에는 VLM 결과를 1차 필터로 유지.
+
+
 ## 2026-03-28: OccAny 입력 제약 사항 (RTB 데이터)
 
 **맥락**: RTB recording camera_front 595프레임으로 OccAny inference 테스트
