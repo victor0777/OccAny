@@ -276,6 +276,56 @@ collision_type_hint:
 
 ---
 
+## OccAny 출력 데이터 전체 인벤토리
+
+### pts3d_render.npy
+
+| Key | Shape | 활용 | Feature |
+|-----|-------|------|---------|
+| `pts3d` | (N, H, W, 3) | ✅ | min_depth, spatial_extent, sector depth |
+| `conf` | (N, H, W) | ✅ | ego_signal, density, sector collapse, reliability |
+| `c2w` | (N, 4, 4) | ✅ | rotation shock, velocity, trajectory |
+| `semantic_2ds` | (N, H, W) | ✅ | class ratios, flip rate |
+| `colors` | (N, H, W, 3) | ✅ | **brightness change** (신규) |
+| `focal` | (N,) | ✗ | 프레임간 동일 (상수) — 변별력 없음 |
+| `pts3d_local` | (N, H, W, 3) | ✗ | pts3d와 거의 동일 (diff=0.12) — 중복 |
+
+### voxel_predictions.pkl
+
+| Key | Shape | 활용 | 비고 |
+|-----|-------|------|------|
+| `estimated_input_camera_poses` | (N, 4, 4) | ✅ | c2w와 동일 |
+| `estimated_input_intrinsics` | (N, 3, 3) | ✗ | 프레임간 동일 — 변별력 없음 |
+| `estimated_input_images` | (N, H, W, 3) | ✅ | 시각화, review 도구 |
+| `voxel_size`, `voxel_origin` | scalar, (3,) | ✗ | 설정값 |
+| `render_th2.0` | (200, 200, 24) | ✗ | 100% occupied — threshold 문제로 변별력 없음 |
+
+### 활용 가능한 Feature 전체 목록 (10개)
+
+| # | Feature | Source | 사고 패턴 | 통계적 근거 |
+|---|---------|--------|----------|------------|
+| 1 | `ego_signal_strength` | conf | ego/observed 구분 | p=0.017, F1=0.642 |
+| 2 | `sector_collapse` (5개) | conf × sector | 충돌 방향 추정 | Phase 3 테스트 확인 |
+| 3 | `rotation_shock` | c2w | 충격 강도/방향 | solo=115°, rear_end_other=1.3° |
+| 4 | `left_right_asymmetry` | sector collapse | 측면 충돌 방향 | solo=-0.58 (우측) |
+| 5 | `approaching_object` | pts3d depth 추세 | 전방 접근 감지 | boolean |
+| 6 | `reliability` | conf, rotation, free_space | 결과 품질 게이팅 | 0~1 |
+| 7 | `vehicle_ratio` | semantic | 근접 차량 존재 | rear_end_other=43.8% (최고) |
+| 8 | `flip_rate` | semantic 프레임간 변동 | 능동 사고 시그널 | solo=33%, other=10.5% |
+| 9 | `brightness_change` | colors | 능동 사고 시그널 | solo=0.118, other=0.019 |
+| 10 | `free_space_ratio` | conf (중앙 시야) | 시야 차단 | intersection=44.8% |
+
+### Feature 간 상관 패턴
+
+flip_rate와 brightness_change는 같은 방향의 패턴을 보인다:
+- **높음**: solo_collision (카메라 급변) > unsafe_lane_change (급기동) > rear_end_ego (충격)
+- **낮음**: observed (안정적 관찰) > rear_end_other (정지 중 피추돌)
+
+이는 두 feature가 모두 **"카메라의 물리적 동요"**를 다른 각도에서 측정하기 때문.
+ego_signal(conf 급락), flip_rate(시맨틱 변동), brightness_change(색상 변동)는 상관이 있을 수 있으나, 각각 다른 원인으로도 발생하므로 앙상블 시 보완적.
+
+---
+
 ## OccAny의 능력 범위
 
 ### 신뢰할 수 있는 것 (scale-free 상대 특징)
