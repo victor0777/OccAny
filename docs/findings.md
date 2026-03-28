@@ -140,6 +140,41 @@ rear(0.184), side(0.176), front(0.167) 모두 비슷. 유일하게 **observed_ac
 **영향**: Phase 3 fast track (sectorized features, reliability, VLM verifier) 착수 근거 확보. 단일 지표가 아닌 다중 지표 접근이 필수.
 
 
+## 2026-03-28: dgx01 추가 데이터 확보 + 사고 원인별 3D 패턴
+
+**맥락**: dgx01 accident_analysis에서 추가 라벨 파일 6종 확보 (cause_classification, risk_events, gt_alignment 등)
+
+**발견**:
+
+### 사고 원인 8가지 분류 × ego_signal
+
+| 사고 원인 | n | signal mean | signal median |
+|-----------|---|-------------|---------------|
+| side_collision_intersection | 3 | **0.293** | 0.304 |
+| unsafe_lane_change_ego | 13 | **0.224** | 0.229 |
+| solo_collision | 5 | 0.184 | 0.129 |
+| rear_end_ego_at_fault | 35 | 0.180 | 0.127 |
+| sudden_stop_front | 4 | 0.163 | 0.166 |
+| observed_accident | 50 | 0.141 | 0.108 |
+| cut_in_other | 8 | 0.135 | 0.178 |
+| rear_end_other_at_fault | 3 | **0.057** | 0.056 |
+
+### 패턴
+
+1. **ego 능동 사고 > ego 피동 사고**: ego가 직접 움직인 사고(lane_change 0.224, rear_end_ego 0.180)가 상대 과실(rear_end_other 0.057, cut_in 0.135)보다 signal 높음
+2. **교차로 측면 충돌이 가장 높음** (0.293) — 강한 물리적 충격
+3. **rear_end_other_at_fault가 가장 낮음** (0.057) — ego는 정지/서행 중 뒤에서 추돌당함 → 카메라 충격 약함
+4. **observed_accident** (0.141)이 non_accident (0.151)과 비슷 — ego_signal로는 관찰 사고 ≈ 비사고
+
+### 추가 데이터
+
+- `gt_alignment_results.json` (15건): 수동 검증 GT (collision_type, accident_reasons 포함) → Gold subset 핵심 후보
+- `risk_event_results.json` (158건): 프레임별 위험 이벤트 (close_approach, depth_drop 등) → Phase 3 VLM verifier의 비교 기준
+- `cause_classification_results.json` (157건): 사고 원인 + contributing_factors → 다중 지표 판별 모델의 target label
+
+**영향**: cause_classification의 8가지 원인 분류가 OccAny 분석의 더 적합한 평가 축. ego/observed 이분법보다 세분화된 원인별 3D 패턴이 실용적. gt_alignment 15건은 Gold GT sprint의 시작점.
+
+
 ## 2026-03-28: OccAny 입력 제약 사항 (RTB 데이터)
 
 **맥락**: RTB recording camera_front 595프레임으로 OccAny inference 테스트
